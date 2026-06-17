@@ -7,12 +7,14 @@ Handles database connection, session management, and initialization.
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
-from config.settings import get_settings
-from app.models import Base
 import logging
+import os
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bird.db")
+DATABASE_ECHO = os.getenv("DATABASE_ECHO", "False").lower() == "true"
 
 
 class DatabaseManager:
@@ -27,40 +29,50 @@ class DatabaseManager:
         if cls._engine is not None:
             return
         
-        # Create engine
-        if settings.database_url.startswith("sqlite"):
-            # SQLite-specific configuration
-            cls._engine = create_engine(
-                settings.database_url,
-                connect_args={"check_same_thread": False},
-                poolclass=StaticPool,
-                echo=settings.database_echo
+        try:
+            # Create engine
+            if DATABASE_URL.startswith("sqlite"):
+                # SQLite-specific configuration
+                cls._engine = create_engine(
+                    DATABASE_URL,
+                    connect_args={"check_same_thread": False},
+                    poolclass=StaticPool,
+                    echo=DATABASE_ECHO
+                )
+                
+                # Enable foreign keys for SQLite
+                @event.listens_for(cls._engine, "connect")
+                def set_sqlite_pragma(dbapi_conn, connection_record):
+                    cursor = dbapi_conn.cursor()
+                    cursor.execute("PRAGMA foreign_keys=ON")
+                    cursor.close()
+            else:
+                # PostgreSQL or other databases
+                cls._engine = create_engine(
+                    DATABASE_URL,
+                    echo=DATABASE_ECHO,
+                    pool_pre_ping=True
+                )
+            
+            # Create session factory
+            cls._SessionLocal = sessionmaker(
+                autocommit=False,
+                autoflush=False,
+                bind=cls._engine
             )
             
-            # Enable foreign keys for SQLite
-            @event.listens_for(cls._engine, "connect")
-            def set_sqlite_pragma(dbapi_conn, connection_record):
-                cursor = dbapi_conn.cursor()
-                cursor.execute("PRAGMA foreign_keys=ON")
-                cursor.close()
-        else:
-            # PostgreSQL or other databases
-            cls._engine = create_engine(
-                settings.database_url,
-                echo=settings.database_echo,
-                pool_pre_ping=True
-            )
-        
-        # Create session factory
-        cls._SessionLocal = sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=cls._engine
-        )
-        
-        # Create all tables
-        Base.metadata.create_all(bind=cls._engine)
-        logger.info("Database initialized successfully")
+            # Import models here to avoid circular imports
+            from app.models import Base
+            
+            # Create all tables
+            Base.metadata.create_all(bind=cls._engine)
+            logger.info("✅ Database initialized successfully")
+            print("✅ Database initialized successfully!")
+            
+        except Exception as e:
+            logger.error(f"❌ Database initialization failed: {e}")
+            print(f"❌ Database initialization failed: {e}")
+            raise
     
     @classmethod
     def get_session(cls) -> Session:
@@ -91,7 +103,3 @@ def get_db() -> Session:
         yield db
     finally:
         db.close()
-
-
-# Initialize database on module import
-DatabaseManager.initialize()
