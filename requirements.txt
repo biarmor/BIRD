@@ -1,6 +1,5 @@
 # BIRD Backend - Multi-Agent Intelligence System
-# Phase 0-4 Implementation
-# Updated with correct package versions
+# Optimized for easy installation (pre-built wheels, no compilation)
 
 # Core Framework
 fastapi==0.104.1
@@ -34,9 +33,9 @@ requests==2.31.0
 beautifulsoup4==4.12.2
 httpx==0.25.2
 
-# Data Processing
-pandas==2.1.3
-numpy==1.26.2
+# Data Processing (lightweight versions)
+pandas==2.0.3
+numpy==1.24.3
 python-multipart==0.0.6
 
 # Testing
