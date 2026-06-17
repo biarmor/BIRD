@@ -1,5 +1,6 @@
 # BIRD Backend - Multi-Agent Intelligence System
 # Phase 0-4 Implementation
+# Updated with correct package versions
 
 # Core Framework
 fastapi==0.104.1
@@ -19,14 +20,12 @@ sqlalchemy==2.0.23
 alembic==1.13.1
 
 # LLM & Reasoning
-ollama==0.0.48
+ollama==0.6.2
 langchain==0.1.0
-langgraph==0.0.20
 langchain-community==0.0.10
 
 # Embeddings & Vector Search
 chromadb==0.4.21
-nomic==2.0.0
 sentence-transformers==2.2.2
 
 # Web Scraping & Data Collection
@@ -44,7 +43,6 @@ python-multipart==0.0.6
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
-httpx==0.25.2
 
 # Monitoring & Logging
 python-json-logger==2.0.7
