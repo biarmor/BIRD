@@ -17,7 +17,6 @@ PyJWT==2.8.0
 # Database
 sqlalchemy==2.0.23
 alembic==1.13.1
-sqlite3-python==1.0.0
 
 # LLM & Reasoning
 ollama==0.0.48
