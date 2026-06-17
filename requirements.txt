@@ -1,0 +1,57 @@
+# BIRD Backend - Multi-Agent Intelligence System
+# Phase 0-4 Implementation
+
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# Security & Auth
+bcrypt==4.1.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+PyJWT==2.8.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.13.1
+sqlite3-python==1.0.0
+
+# LLM & Reasoning
+ollama==0.0.48
+langchain==0.1.0
+langgraph==0.0.20
+langchain-community==0.0.10
+
+# Embeddings & Vector Search
+chromadb==0.4.21
+nomic==2.0.0
+sentence-transformers==2.2.2
+
+# Web Scraping & Data Collection
+duckduckgo-search==3.9.10
+requests==2.31.0
+beautifulsoup4==4.12.2
+httpx==0.25.2
+
+# Data Processing
+pandas==2.1.3
+numpy==1.26.2
+python-multipart==0.0.6
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.2
+
+# Monitoring & Logging
+python-json-logger==2.0.7
+structlog==23.2.0
+
+# Utilities
+pydantic-extra-types==2.3.0
+python-slugify==8.0.1
+uuid6==1.0.3
