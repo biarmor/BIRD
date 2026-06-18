@@ -55,16 +55,20 @@ class RARAgent:
     - Knowledge integration
     """
     
-    def __init__(self, db_session=None, vault_agent=None):
+    def __init__(self, db_session=None, vault_agent=None, llm_client=None):
         """
         Initialize RAR Agent.
         
         Args:
             db_session: SQLAlchemy database session
             vault_agent: Vault agent for retrieval
+            llm_client: Ollama client for LLM calls
         """
         self.db_session = db_session
-        self.vault_agent = vault_agent
+        from app.agents.vault_agent import VaultAgent
+        self.vault_agent = vault_agent or VaultAgent(db_session=db_session)
+        from app.services.llm_service import get_llm_client
+        self.llm_client = llm_client or get_llm_client()
         self.reasoning_steps = []
         self.retrieval_contexts = []
     
@@ -155,14 +159,25 @@ class RARAgent:
         """
         logger.info(f"Retrieving facts for: {query}")
         
-        # Placeholder: In production, use vault agent for retrieval
-        retrieved_facts = [
-            f"Fact 1 relevant to {query}",
-            f"Fact 2 relevant to {query}",
-            f"Fact 3 relevant to {query}"
-        ]
+        # Query the VaultAgent for real facts
+        facts = await self.vault_agent.retrieve_facts(query=query, workspace_id=workspace_id, top_k=5)
         
-        relevance_scores = [0.9, 0.8, 0.7]
+        retrieved_facts = []
+        relevance_scores = []
+        
+        for fact in facts:
+            retrieved_facts.append(fact.fact)
+            # Use confidence score (distance converted) or overall score if available
+            relevance_scores.append(getattr(fact, "confidence", 0.8))
+        
+        # Fallback to simulated facts if no facts retrieved
+        if not retrieved_facts:
+            retrieved_facts = [
+                f"Fact 1 relevant to {query}",
+                f"Fact 2 relevant to {query}",
+                f"Fact 3 relevant to {query}"
+            ]
+            relevance_scores = [0.9, 0.8, 0.7]
         
         context = RetrievalContext(
             query=query,
@@ -194,13 +209,43 @@ class RARAgent:
         """
         logger.info(f"Reasoning with context for: {query}")
         
-        # Placeholder: In production, use LLM for reasoning
         reasoning_text = f"Analyzing {query} with {len(retrieval_context.retrieved_facts)} facts"
         conclusion = f"Conclusion based on retrieved facts: {query}"
         
         # Calculate confidence based on retrieval quality
-        avg_relevance = sum(retrieval_context.relevance_scores) / len(retrieval_context.relevance_scores)
+        avg_relevance = sum(retrieval_context.relevance_scores) / len(retrieval_context.relevance_scores) if retrieval_context.relevance_scores else 0.5
         confidence = avg_relevance * 0.9 + 0.1  # Confidence based on retrieval relevance
+        
+        # Call LLM if online
+        if await self.llm_client.is_healthy():
+            try:
+                facts_str = "\n".join([f"- {f}" for f in retrieval_context.retrieved_facts])
+                prompt = f"""Query: {query}
+Retrieved Facts:
+{facts_str}
+
+Please reason step-by-step using ONLY the retrieved facts to address the query. Then write a concise one-sentence conclusion.
+Format your output exactly as:
+Reasoning: <your step by step reasoning>
+Conclusion: <your concise conclusion>"""
+                
+                response = await self.llm_client.generate(
+                    prompt=prompt,
+                    system="You are a logical reasoning assistant."
+                )
+                res_text = response.get("response", "")
+                
+                # Parse Reasoning: and Conclusion:
+                if "Reasoning:" in res_text and "Conclusion:" in res_text:
+                    parts = res_text.split("Conclusion:")
+                    reasoning_part = parts[0].replace("Reasoning:", "").strip()
+                    conclusion_part = parts[1].strip()
+                    
+                    reasoning_text = reasoning_part
+                    conclusion = conclusion_part
+                    confidence = 0.85
+            except Exception as e:
+                logger.error(f"Error reasoning with LLM: {e}")
         
         step = ReasoningStep(
             step_number=step_number,
@@ -233,8 +278,26 @@ class RARAgent:
         Returns:
             Next query
         """
-        # Placeholder: In production, use LLM to generate next query
         next_query = f"{current_query} AND {retrieval_context.retrieved_facts[0][:30]}"
+        
+        # Call LLM if online
+        if await self.llm_client.is_healthy():
+            try:
+                facts_str = "\n".join([f"- {f}" for f in retrieval_context.retrieved_facts])
+                prompt = f"""Current Query: {current_query}
+Current Reasoning: {reasoning_step.reasoning}
+Retrieved Facts:
+{facts_str}
+
+Based on this, what is the next specific query or keyword combination we should search in the fact vault to find more evidence to complete the reasoning chain? Return ONLY the new query string, with no other text."""
+                
+                response = await self.llm_client.generate(prompt=prompt)
+                res_text = response.get("response", "").strip().strip('"')
+                if res_text:
+                    next_query = res_text
+            except Exception as e:
+                logger.error(f"Error generating next query with LLM: {e}")
+                
         return next_query
     
     async def _synthesize_reasoning(self) -> Dict[str, Any]:
@@ -274,7 +337,7 @@ class RARAgent:
             "final_conclusion": final_step.conclusion,
             "confidence": avg_confidence,
             "evidence_count": len(all_evidence),
-            "unique_evidence": len(set(all_evidence)),
+            "unique_evidence": list(set(all_evidence)),
             "total_hops": len(self.reasoning_steps),
             "reasoning_chain": [s.conclusion for s in self.reasoning_steps]
         }

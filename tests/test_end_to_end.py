@@ -6,7 +6,7 @@ Complete workflow tests for the BIRD multi-agent system.
 
 import pytest
 from datetime import datetime, timedelta
-from app.agents.orchestrator_agent import orchestrate_query, ExecutionMode
+from app.agents.orchestrator_agent import orchestrate_query, ExecutionMode, OrchestratorAgent
 from app.agents.vault_agent import VaultAgent
 from app.agents.reasoning_agent import ReasoningAgent
 from app.agents.debate_agent import DebateAgent

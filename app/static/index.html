@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIRD Control Center - Multi-Agent AI</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CSS Style Sheet -->
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="dark-theme">
+    <!-- Auth View Container -->
+    <div id="auth-container" class="auth-wrapper hidden">
+        <div class="auth-card glassmorphism">
+            <div class="auth-header">
+                <div class="logo">
+                    <i class="fa-solid fa-dove logo-icon"></i>
+                    <span>B.I.R.D.</span>
+                </div>
+                <h2>Autonomous Intelligence System</h2>
+                <p>Sign in to access your intelligence control center</p>
+            </div>
+            
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-username">Username</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fa-regular fa-user"></i>
+                        <input type="text" id="login-username" placeholder="Enter username" required autocomplete="username">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <div class="input-icon-wrapper">
+                        <i class="fa-solid fa-lock"></i>
+                        <input type="password" id="login-password" placeholder="Enter password" required autocomplete="current-password">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+            </form>
+
+            <div class="auth-divider"><span>or register a new account</span></div>
+
+            <form id="register-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="reg-username">Username</label>
+                        <input type="text" id="reg-username" placeholder="Username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-email">Email</label>
+                        <input type="email" id="reg-email" placeholder="email@example.com" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="reg-fullname">Full Name</label>
+                    <input type="text" id="reg-fullname" placeholder="e.g. Alexander Pierce">
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" placeholder="Min 6 characters" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-secondary btn-block">Create Account</button>
+            </form>
+            <div id="auth-message" class="auth-alert hidden"></div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Application Container -->
+    <div id="app-container" class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glassmorphism">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-dove logo-icon"></i>
+                    <span>B.I.R.D.</span>
+                </div>
+                <span class="badge badge-indigo">v2.0</span>
+            </div>
+
+            <!-- Workspace Selector -->
+            <div class="workspace-panel">
+                <label for="workspace-select"><i class="fa-solid fa-briefcase"></i> WORKSPACE</label>
+                <div class="select-wrapper">
+                    <select id="workspace-select">
+                        <option value="">Loading workspaces...</option>
+                    </select>
+                </div>
+                <button id="btn-create-workspace" class="btn-text"><i class="fa-solid fa-plus"></i> New Workspace</button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#control-room" class="nav-item active" data-target="view-control-room">
+                    <i class="fa-solid fa-terminal"></i> <span>Control Room</span>
+                </a>
+                <a href="#smart-vault" class="nav-item" data-target="view-smart-vault">
+                    <i class="fa-solid fa-vault"></i> <span>Smart Vault</span>
+                </a>
+                <a href="#campaign-center" class="nav-item" data-target="view-campaign-center">
+                    <i class="fa-solid fa-bullhorn"></i> <span>Campaign Center</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <i class="fa-solid fa-circle-user avatar"></i>
+                    <div class="profile-info">
+                        <span id="user-display-name">Loading...</span>
+                        <span class="user-role">Administrator</span>
+                    </div>
+                </div>
+                <button id="btn-logout" title="Sign Out"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header Status Bar -->
+            <header class="top-bar glassmorphism">
+                <div class="page-title">
+                    <h1 id="current-view-title">Control Room</h1>
+                    <p id="current-view-desc">Coordinate autonomous AI agents and run reasoning queries</p>
+                </div>
+                <div class="status-indicators">
+                    <div class="indicator-item">
+                        <span class="pulse-dot green"></span>
+                        <span class="indicator-label">Ollama LLM: Online</span>
+                    </div>
+                    <div class="indicator-item">
+                        <span class="pulse-dot green"></span>
+                        <span class="indicator-label">ChromaDB: Connected</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard Content Views -->
+            <div class="view-viewport">
+                
+                <!-- VIEW 1: CONTROL ROOM -->
+                <div id="view-control-room" class="content-view active">
+                    <div class="control-room-grid">
+                        <!-- Left Panel: Orchestration Trigger -->
+                        <div class="panel glassmorphism">
+                            <div class="panel-header">
+                                <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Launch Agent Query</h3>
+                            </div>
+                            <div class="panel-body">
+                                <form id="orchestrator-form">
+                                    <div class="form-group">
+                                        <label for="query-input">Query / Prompt</label>
+                                        <textarea id="query-input" placeholder="e.g. Analyze competitor pricing trends and draft a marketing plan." required rows="4"></textarea>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="execution-mode">Execution Mode</label>
+                                            <select id="execution-mode">
+                                                <option value="ADAPTIVE" selected>Adaptive Reasoning (RAR)</option>
+                                                <option value="SEQUENTIAL">Sequential Execution</option>
+                                                <option value="PARALLEL">Parallel Ingestion</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-play"></i> Execute Agents</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Active Status & Logs -->
+                        <div class="panel glassmorphism flex-column">
+                            <div class="panel-header justify-between">
+                                <h3><i class="fa-solid fa-list-check"></i> Execution Monitor</h3>
+                                <div id="execution-status-badge" class="badge">idle</div>
+                            </div>
+                            <div class="panel-body flex-grow overflow-auto" id="execution-monitor-body">
+                                <div class="empty-state">
+                                    <i class="fa-solid fa-brain empty-icon"></i>
+                                    <p>Submit a query to visualize agent execution steps</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Panel: Reasoning Chains History -->
+                    <div class="panel glassmorphism margin-top">
+                        <div class="panel-header">
+                            <h3><i class="fa-solid fa-clock-rotate-left"></i> Persistent Reasoning Chains</h3>
+                        </div>
+                        <div class="panel-body overflow-auto max-height-300">
+                            <table class="table" id="reasoning-history-table">
+                                <thead>
+                                    <tr>
+                                        <th>Query</th>
+                                        <th>Hops</th>
+                                        <th>Confidence</th>
+                                        <th>Final Conclusion</th>
+                                        <th>Execution Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No reasoning chains saved yet.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VIEW 2: SMART VAULT -->
+                <div id="view-smart-vault" class="content-view">
+                    <div class="smart-vault-grid">
+                        <!-- Left Panel: Ingestion / Search -->
+                        <div class="panel glassmorphism">
+                            <div class="panel-header">
+                                <h3><i class="fa-solid fa-plus"></i> Ingest New Fact</h3>
+                            </div>
+                            <div class="panel-body">
+                                <form id="ingest-fact-form">
+                                    <div class="form-group">
+                                        <label for="fact-input">Fact Content</label>
+                                        <textarea id="fact-input" placeholder="e.g. Acme Corp pricing starts at $49/month with a 10% discount on yearly subscriptions." required rows="3"></textarea>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="fact-category">Category</label>
+                                            <select id="fact-category">
+                                                <option value="pricing" selected>Pricing</option>
+                                                <option value="product">Product Features</option>
+                                                <option value="roadmap">Roadmap / News</option>
+                                                <option value="marketing">Marketing Claims</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="fact-source">Source</label>
+                                            <input type="text" id="fact-source" placeholder="e.g. Website, Press Release" required>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-file-import"></i> Save to Vault</button>
+                                </form>
+
+                                <div class="divider"></div>
+
+                                <h3><i class="fa-solid fa-magnifying-glass"></i> Semantic Query Search</h3>
+                                <form id="vault-search-form" class="margin-top-sm">
+                                    <div class="form-group">
+                                        <div class="search-input-wrapper">
+                                            <input type="text" id="vault-search-query" placeholder="Search facts in memory..." required>
+                                            <button type="submit" class="btn-search"><i class="fa-solid fa-search"></i></button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Facts Table -->
+                        <div class="panel glassmorphism flex-column">
+                            <div class="panel-header justify-between">
+                                <h3><i class="fa-solid fa-database"></i> Vault Facts</h3>
+                                <span id="fact-count-badge" class="badge badge-indigo">0 facts</span>
+                            </div>
+                            <div class="panel-body flex-grow overflow-auto">
+                                <div id="vault-facts-container">
+                                    <!-- Facts populated dynamically -->
+                                    <table class="table" id="vault-facts-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Fact</th>
+                                                <th>Category</th>
+                                                <th>Source</th>
+                                                <th>Confidence</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">No facts stored in workspace.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VIEW 3: CAMPAIGN CENTER -->
+                <div id="view-campaign-center" class="content-view">
+                    <div class="campaign-grid">
+                        <!-- Left Panel: Create / Drafts -->
+                        <div class="panel glassmorphism">
+                            <div class="panel-header">
+                                <h3><i class="fa-solid fa-plus"></i> Create Marketing Campaign</h3>
+                            </div>
+                            <div class="panel-body">
+                                <form id="create-campaign-form">
+                                    <div class="form-group">
+                                        <label for="campaign-name">Campaign Name</label>
+                                        <input type="text" id="campaign-name" placeholder="e.g. Competitor Price Match Q3" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="campaign-channel">Primary Target Channel</label>
+                                        <select id="campaign-channel">
+                                            <option value="Email" selected>Email Marketing</option>
+                                            <option value="Social">Social Media Ads</option>
+                                            <option value="Web">Web Search Campaign</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="campaign-brief">Asset Details / Brief</label>
+                                        <textarea id="campaign-brief" placeholder="Specify any brief or let ForgeAgent design assets automatically based on vault facts..." rows="4"></textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-square-plus"></i> Save Draft Campaign</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: List & Metrics -->
+                        <div class="panel glassmorphism flex-column">
+                            <div class="panel-header">
+                                <h3><i class="fa-solid fa-bullhorn"></i> Live Campaigns</h3>
+                            </div>
+                            <div class="panel-body flex-grow overflow-auto" id="campaign-list-container">
+                                <div class="empty-state">
+                                    <i class="fa-solid fa-chart-line empty-icon"></i>
+                                    <p>No campaigns found. Create a campaign to start deploying.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metrics / Analytics Dashboard -->
+                    <div class="panel glassmorphism margin-top" id="campaign-analytics-section" style="display:none;">
+                        <div class="panel-header justify-between">
+                            <h3><i class="fa-solid fa-square-poll-vertical"></i> Performance Analytics - <span id="analytics-campaign-name">Campaign</span></h3>
+                            <button id="btn-refresh-metrics" class="btn btn-secondary btn-sm"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                        </div>
+                        <div class="panel-body">
+                            <div class="metrics-grid">
+                                <div class="metric-card glassmorphism">
+                                    <span class="metric-title">Impressions</span>
+                                    <span class="metric-value" id="val-impressions">0</span>
+                                    <span class="metric-trend"><i class="fa-solid fa-arrow-up"></i> Organic Reach</span>
+                                </div>
+                                <div class="metric-card glassmorphism">
+                                    <span class="metric-title">Clicks</span>
+                                    <span class="metric-value" id="val-clicks">0</span>
+                                    <span class="metric-trend green"><i class="fa-solid fa-circle-nodes"></i> Engagement</span>
+                                </div>
+                                <div class="metric-card glassmorphism">
+                                    <span class="metric-title">Conversions</span>
+                                    <span class="metric-value" id="val-conversions">0</span>
+                                    <span class="metric-trend gold"><i class="fa-solid fa-dollar-sign"></i> Sales Funnel</span>
+                                </div>
+                                <div class="metric-card glassmorphism">
+                                    <span class="metric-title">Simulated ROI</span>
+                                    <span class="metric-value" id="val-roi">0%</span>
+                                    <span class="metric-trend blue"><i class="fa-solid fa-chart-simple"></i> Yield</span>
+                                </div>
+                            </div>
+
+                            <!-- Creative Chart Visualization using CSS Grids/Bars -->
+                            <div class="chart-container glassmorphism margin-top-sm">
+                                <h4>Conversion Funnel Rate</h4>
+                                <div class="bar-chart">
+                                    <div class="bar-wrapper">
+                                        <div class="bar-label">Impressions</div>
+                                        <div class="bar-progress"><div class="bar-fill" id="bar-impressions" style="width: 100%;"></div></div>
+                                        <div class="bar-val" id="val-bar-impressions">0</div>
+                                    </div>
+                                    <div class="bar-wrapper">
+                                        <div class="bar-label">Clicks</div>
+                                        <div class="bar-progress"><div class="bar-fill bg-emerald" id="bar-clicks" style="width: 0%;"></div></div>
+                                        <div class="bar-val" id="val-bar-clicks">0</div>
+                                    </div>
+                                    <div class="bar-wrapper">
+                                        <div class="bar-label">Conversions</div>
+                                        <div class="bar-progress"><div class="bar-fill bg-indigo" id="bar-conversions" style="width: 0%;"></div></div>
+                                        <div class="bar-val" id="val-bar-conversions">0</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Dialogs -->
+    <div id="modal-container" class="modal-overlay hidden">
+        <div class="modal-card glassmorphism">
+            <h3 id="modal-title">Modal Title</h3>
+            <div class="modal-body" id="modal-body">
+                <!-- Modal inputs go here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="btn-modal-submit">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

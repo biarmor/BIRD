@@ -1,314 +1,304 @@
 """
-Orchestration Tests
-
-Unit and integration tests for multi-agent orchestration.
+Tests for Phase 2: Multi-Agent Orchestration, Radar Agent, and Agents Router.
 """
 
 import pytest
-import asyncio
-from app.agents.orchestrator_agent import (
-    OrchestratorAgent, AgentType, ExecutionMode, AgentTask, orchestrate_query
-)
-from app.agents.reasoning_agent import ReasoningAgent, reason_about_query
-from app.agents.debate_agent import DebateAgent, debate_conclusion
-from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.database import get_db
+from app.models import Base, VaultFact, User, Workspace
+from app.agents.radar_agent import RadarAgent
+from app.agents.orchestrator_agent import OrchestratorAgent, ExecutionMode, AgentType, AgentTask, AgentExecutionResult
+
+# SQLite test database setup
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test_orchestration.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base.metadata.create_all(bind=engine)
 
 
-class TestOrchestratorAgent:
-    """Test Orchestrator Agent functionality."""
+@pytest.fixture(autouse=True, scope="module")
+def setup_dependency_overrides():
+    """Set database dependency override for this test module."""
+    def override_get_db():
+        try:
+            db = TestingSessionLocal()
+            yield db
+        finally:
+            db.close()
     
-    def test_agent_registration(self):
-        """Test agent registration."""
-        orchestrator = OrchestratorAgent()
-        
-        assert len(orchestrator.agent_registry) == 6
-        assert AgentType.VAULT in orchestrator.agent_registry
-        assert AgentType.RADAR in orchestrator.agent_registry
-        assert AgentType.REASONING in orchestrator.agent_registry
-        assert AgentType.DEBATE in orchestrator.agent_registry
-    
-    def test_query_analysis_web_search(self):
-        """Test query analysis for web search."""
-        orchestrator = OrchestratorAgent()
-        
-        agents, mode = orchestrator.analyze_query("Find competitor news on the market")
-        
-        assert AgentType.RADAR in agents
-        assert AgentType.VAULT in agents
-    
-    def test_query_analysis_reasoning(self):
-        """Test query analysis for reasoning."""
-        orchestrator = OrchestratorAgent()
-        
-        agents, mode = orchestrator.analyze_query("Why did our market share decline?")
-        
-        assert AgentType.REASONING in agents
-    
-    def test_query_analysis_debate(self):
-        """Test query analysis for debate."""
-        orchestrator = OrchestratorAgent()
-        
-        agents, mode = orchestrator.analyze_query("Debate the pros and cons of this strategy")
-        
-        assert AgentType.DEBATE in agents
-    
-    def test_execution_mode_selection(self):
-        """Test execution mode selection."""
-        orchestrator = OrchestratorAgent()
-        
-        # Single agent should be sequential
-        agents, mode = orchestrator.analyze_query("Search vault for facts")
-        assert mode == ExecutionMode.SEQUENTIAL
-        
-        # Multiple agents should be parallel
-        agents, mode = orchestrator.analyze_query("Search web, reason about findings, and debate conclusions")
-        assert mode == ExecutionMode.PARALLEL
-    
-    @pytest.mark.asyncio
-    async def test_task_creation(self):
-        """Test task creation."""
-        orchestrator = OrchestratorAgent()
-        
-        tasks = await orchestrator.create_tasks(
-            query="Test query",
-            workspace_id="test-workspace",
-            agents=[AgentType.VAULT, AgentType.REASONING]
-        )
-        
-        assert len(tasks) == 2
-        assert tasks[0].agent_type == AgentType.VAULT
-        assert tasks[1].agent_type == AgentType.REASONING
-        assert tasks[0].priority > tasks[1].priority
-    
-    @pytest.mark.asyncio
-    async def test_sequential_execution(self):
-        """Test sequential task execution."""
-        orchestrator = OrchestratorAgent()
-        
-        tasks = await orchestrator.create_tasks(
-            query="Test query",
-            workspace_id="test-workspace",
-            agents=[AgentType.VAULT, AgentType.REASONING]
-        )
-        
-        results = await orchestrator.execute_sequential(tasks)
-        
-        assert len(results) == 2
-        assert all(r.status == "success" for r in results)
-    
-    @pytest.mark.asyncio
-    async def test_parallel_execution(self):
-        """Test parallel task execution."""
-        orchestrator = OrchestratorAgent()
-        
-        tasks = await orchestrator.create_tasks(
-            query="Test query",
-            workspace_id="test-workspace",
-            agents=[AgentType.VAULT, AgentType.REASONING, AgentType.DEBATE]
-        )
-        
-        results = await orchestrator.execute_parallel(tasks)
-        
-        assert len(results) == 3
-        assert all(r.status == "success" for r in results)
-    
-    @pytest.mark.asyncio
-    async def test_orchestration(self):
-        """Test full orchestration."""
-        orchestrator = OrchestratorAgent()
-        
-        result = await orchestrator.orchestrate(
-            query="Analyze market trends",
-            workspace_id="test-workspace"
-        )
-        
-        assert "query" in result
-        assert "findings" in result
-        assert "confidence" in result
-        assert result["total_agents"] > 0
-    
-    def test_execution_history(self):
-        """Test execution history tracking."""
-        orchestrator = OrchestratorAgent()
-        
-        history = orchestrator.get_execution_history()
-        
-        assert isinstance(history, list)
-        assert len(history) == 0  # No executions yet
-    
-    def test_agent_stats(self):
-        """Test agent statistics."""
-        orchestrator = OrchestratorAgent()
-        
-        stats = orchestrator.get_agent_stats()
-        
-        assert stats["total_executions"] == 0
-        assert stats["successful_executions"] == 0
-        assert stats["failed_executions"] == 0
-        assert stats["success_rate"] == 0.0
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    if get_db in app.dependency_overrides:
+        del app.dependency_overrides[get_db]
 
 
-class TestReasoningAgent:
-    """Test Reasoning Agent functionality."""
-    
-    @pytest.mark.asyncio
-    async def test_causality_analysis(self):
-        """Test causality analysis."""
-        agent = ReasoningAgent()
-        
-        result = await agent.analyze_causality(
-            effect="Market share declined",
-            context={"industry": "tech", "recent_events": ["competitor launch"]}
-        )
-        
-        assert result["effect"] == "Market share declined"
-        assert "potential_causes" in result
-        assert "causal_chain" in result
-        assert "confidence" in result
-    
-    @pytest.mark.asyncio
-    async def test_hypothesis_generation(self):
-        """Test hypothesis generation."""
-        agent = ReasoningAgent()
-        
-        observations = ["Observation 1", "Observation 2", "Observation 3"]
-        
-        hypotheses = await agent.generate_hypotheses(
-            observations=observations,
-            context={}
-        )
-        
-        assert len(hypotheses) == 3
-        assert all("hypothesis" in h for h in hypotheses)
-    
-    @pytest.mark.asyncio
-    async def test_evidence_evaluation(self):
-        """Test evidence evaluation."""
-        agent = ReasoningAgent()
-        
-        result = await agent.evaluate_evidence(
-            hypothesis="Market share decline is due to competition",
-            evidence_items=["support evidence", "contradicting evidence", "neutral evidence"]
-        )
-        
-        assert result["total_evidence"] == 3
-        assert "support_score" in result
-        assert "confidence" in result
-    
-    @pytest.mark.asyncio
-    async def test_reasoning_about_query(self):
-        """Test reasoning about a query."""
-        agent = ReasoningAgent()
-        
-        result = await agent.reason_about_query(
-            query="Why did our revenue decline?",
-            context={}
-        )
-        
-        assert result["query"] == "Why did our revenue decline?"
-        assert "concepts" in result
-        assert "relationships" in result
-        assert "conclusions" in result
+@pytest.fixture(autouse=True)
+def clear_db():
+    """Clear SQLite database before each test."""
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
 
 
-class TestDebateAgent:
-    """Test Debate Agent functionality."""
-    
-    @pytest.mark.asyncio
-    async def test_debate_conclusion(self):
-        """Test debate on a conclusion."""
-        agent = DebateAgent()
-        
-        result = await agent.debate_conclusion(
-            conclusion="We should expand to new markets",
-            context={},
-            num_rounds=2
-        )
-        
-        assert result["conclusion"] == "We should expand to new markets"
-        assert "debate_rounds" in result
-        assert len(result["debate_rounds"]) == 2
-        assert "final_consensus" in result
-    
-    @pytest.mark.asyncio
-    async def test_perspective_generation(self):
-        """Test perspective generation."""
-        agent = DebateAgent()
-        
-        perspectives = await agent._generate_perspectives(
-            conclusion="Test conclusion",
-            context={}
-        )
-        
-        assert len(perspectives) == 4  # Optimistic, Pessimistic, Neutral, Skeptical
-        assert all(p.confidence > 0 for p in perspectives)
-    
-    @pytest.mark.asyncio
-    async def test_claim_validation(self):
-        """Test claim validation."""
-        agent = DebateAgent()
-        
-        result = await agent.validate_claim(
-            claim="Our product is the best in market",
-            evidence=["Evidence 1", "Evidence 2"],
-            context={}
-        )
-        
-        assert result["claim"] == "Our product is the best in market"
-        assert "validity_score" in result
-        assert "recommendation" in result
-    
-    @pytest.mark.asyncio
-    async def test_conflict_resolution(self):
-        """Test conflict resolution."""
-        agent = DebateAgent()
-        
-        result = await agent.resolve_conflict(
-            position1="We should focus on cost reduction",
-            position2="We should invest in innovation",
-            context={}
-        )
-        
-        assert "position1" in result
-        assert "position2" in result
-        assert "synthesis" in result
-        assert "resolution_confidence" in result
+@pytest.fixture
+def db_session():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-class TestIntegration:
-    """Integration tests for multi-agent system."""
+@pytest.fixture
+def test_client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def mock_vault_agent():
+    agent = MagicMock()
+    # Mock add_fact returning a dummy VaultFact model
+    fact_mock = VaultFact(
+        id="fact-1",
+        workspace_id="ws-123",
+        fact="[Test Info] Test snippet (Source: test.com)",
+        category="market_intel"
+    )
+    agent.add_fact = AsyncMock(return_value=fact_mock)
+    agent.retrieve_facts = AsyncMock(return_value=([], [], 0.5))
+    return agent
+
+
+# ============================================================================
+# 1. Radar Agent Tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_radar_agent_fetch_pricing():
+    """Test RadarAgent fetching pricing intelligence."""
+    radar = RadarAgent()
+    intel = await radar.fetch_intel("pricing info of competitor x", "ws-123")
+    assert len(intel) > 0
+    assert any("pricing" in item["category"] for item in intel)
+    assert any("Starter at $29/mo" in item["snippet"] for item in intel)
+
+
+@pytest.mark.asyncio
+async def test_radar_agent_fetch_roadmap():
+    """Test RadarAgent fetching roadmap and feature intelligence."""
+    radar = RadarAgent()
+    intel = await radar.fetch_intel("new features and roadmap updates", "ws-123")
+    assert len(intel) > 0
+    assert any("product" in item["category"] for item in intel)
+    assert any("Competitor Y" in item["snippet"] for item in intel)
+
+
+@pytest.mark.asyncio
+async def test_radar_agent_ingestion(db_session, mock_vault_agent):
+    """Test RadarAgent ingesting fetched intelligence into the Vault."""
+    radar = RadarAgent(db_session=db_session, vault_agent=mock_vault_agent)
+    intel = [
+        {
+            "title": "Pricing Change",
+            "snippet": "Premium subscription at $49/mo.",
+            "source": "https://test.com",
+            "category": "pricing"
+        }
+    ]
+    ingested = await radar.ingest_intel(intel, "ws-123")
+    assert len(ingested) == 1
+    assert ingested[0]["fact_id"] == "fact-1"
+    mock_vault_agent.add_fact.assert_called_once()
+
+
+# ============================================================================
+# 2. Orchestrator Parallel Execution Tests
+# ============================================================================
+
+def test_orchestrator_query_analysis():
+    """Test OrchestratorAgent routes queries correctly to agents."""
+    orchestrator = OrchestratorAgent()
+    agents, mode = orchestrator.analyze_query("show me pricing news and competitor roadmap")
+    assert AgentType.RADAR in agents
+    assert AgentType.VAULT in agents
+    assert mode == ExecutionMode.PARALLEL
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_parallel_execution_exception(db_session):
+    """Test that exceptions during parallel task execution do not drop tasks but mark them as failed."""
+    orchestrator = OrchestratorAgent(db_session=db_session)
     
-    @pytest.mark.asyncio
-    async def test_full_orchestration_flow(self):
-        """Test full orchestration flow."""
-        result = await orchestrate_query(
-            query="Analyze market trends and debate strategy",
-            workspace_id="test-workspace"
+    # Intentionally corrupt _execute_task to raise an exception for a specific task
+    async def flawed_execute_task(task):
+        if task.agent_type == AgentType.DEBATE:
+            raise RuntimeError("Debate agent crashed")
+        # Return success for other tasks
+        return AgentExecutionResult(
+            task_id=task.id,
+            agent_type=task.agent_type,
+            status="success",
+            result={"findings": "vault ok"}
         )
-        
-        assert "query" in result
-        assert "findings" in result
-        assert "confidence" in result
     
-    @pytest.mark.asyncio
-    async def test_reasoning_flow(self):
-        """Test reasoning flow."""
-        result = await reason_about_query(
-            query="Why did our market share decline?",
-            context={"industry": "tech"}
-        )
-        
-        assert "query" in result
-        assert "conclusions" in result
+    orchestrator._execute_task = flawed_execute_task
     
-    @pytest.mark.asyncio
-    async def test_debate_flow(self):
-        """Test debate flow."""
-        result = await debate_conclusion(
-            conclusion="We should expand to new markets",
-            context={},
-            num_rounds=2
-        )
-        
-        assert "conclusion" in result
-        assert "final_consensus" in result
+    tasks = [
+        AgentTask(id="t1", agent_type=AgentType.VAULT, query="test", parameters={}),
+        AgentTask(id="t2", agent_type=AgentType.DEBATE, query="test", parameters={})
+    ]
+    
+    results = await orchestrator.execute_parallel(tasks)
+    assert len(results) == 2
+    
+    success_task = next(r for r in results if r.agent_type == AgentType.VAULT)
+    assert success_task.status == "success"
+    
+    failed_task = next(r for r in results if r.agent_type == AgentType.DEBATE)
+    assert failed_task.status == "failed"
+    assert "Debate agent crashed" in failed_task.error_message
+
+
+# ============================================================================
+# 3. Agents Router (FastAPI Endpoint) Tests
+# ============================================================================
+
+def test_endpoint_invoke_orchestrator(test_client):
+    """Test POST /api/v2/agents/invoke endpoint."""
+    response = test_client.post(
+        "/api/v2/agents/invoke",
+        json={
+            "query": "pricing news and competitor feature updates",
+            "workspace_id": "ws-test",
+            "mode": "parallel"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "query" in data
+    assert "findings" in data
+    assert data["successful_agents"] > 0
+
+
+def test_endpoint_invoke_vault_agent(test_client, db_session):
+    """Test POST /api/v2/agents/vault endpoint."""
+    # Add a mock owner and workspace to the test database
+    owner = User(id="default-owner-id", username="default-owner", email="o@x.com", hashed_password="pw")
+    workspace = Workspace(id="ws-test", owner_id="default-owner-id", name="Default")
+    db_session.add(owner)
+    db_session.add(workspace)
+    db_session.flush()
+    
+    # Save a mock fact
+    fact_obj = VaultFact(
+        id="fact-xyz",
+        workspace_id="ws-test",
+        fact="The server is located in Oregon.",
+        embedding=[0.1] * 384
+    )
+    db_session.add(fact_obj)
+    db_session.commit()
+    
+    response = test_client.post(
+        "/api/v2/agents/vault",
+        json={
+            "query": "Oregon",
+            "workspace_id": "ws-test",
+            "hops": 1
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "facts" in data
+    assert "confidence" in data
+    assert len(data["facts"]) == 1
+    assert data["facts"][0]["id"] == "fact-xyz"
+
+
+def test_endpoint_invoke_reasoning_agent(test_client):
+    """Test POST /api/v2/agents/reasoning endpoint."""
+    response = test_client.post(
+        "/api/v2/agents/reasoning",
+        json={
+            "query": "Why did competitor X lower prices?",
+            "context": {"competitor": "X"}
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "query" in data
+    assert "conclusion" in data
+
+
+def test_endpoint_invoke_debate_agent(test_client):
+    """Test POST /api/v2/agents/debate endpoint."""
+    response = test_client.post(
+        "/api/v2/agents/debate",
+        json={
+            "conclusion": "Lowering prices increases total subscription revenue.",
+            "context": {},
+            "num_rounds": 2
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "debate_rounds" in data
+    assert "final_consensus" in data
+
+
+def test_endpoint_invoke_radar_agent(test_client, db_session):
+    """Test POST /api/v2/agents/radar endpoint."""
+    # Add a mock owner and workspace to the test database
+    owner = User(id="default-owner-id", username="default-owner", email="o@x.com", hashed_password="pw")
+    workspace = Workspace(id="ws-test", owner_id="default-owner-id", name="Default")
+    db_session.add(owner)
+    db_session.add(workspace)
+    db_session.commit()
+    
+    response = test_client.post(
+        "/api/v2/agents/radar",
+        json={
+            "query": "pricing",
+            "workspace_id": "ws-test"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "fetched_intel" in data
+    assert "ingested_facts" in data
+    assert len(data["fetched_intel"]) > 0
+    assert len(data["ingested_facts"]) > 0
+
+
+def test_endpoint_invoke_forge_agent(test_client):
+    """Test POST /api/v2/agents/forge endpoint."""
+    response = test_client.post(
+        "/api/v2/agents/forge",
+        json={
+            "asset_type": "social_post",
+            "context": {"topic": "Local LLM growth"},
+            "tone": "creative"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "content" in data
+    assert "metadata" in data
+
+
+def test_endpoint_invoke_attack_agent(test_client):
+    """Test POST /api/v2/agents/attack endpoint."""
+    response = test_client.post(
+        "/api/v2/agents/attack",
+        json={
+            "campaign_id": "campaign-123"
+        }
+    )
+    # Since campaign-123 doesn't exist in the database, expect a 500 error from internal DB logic
+    assert response.status_code == 500

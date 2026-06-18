@@ -214,18 +214,52 @@ class AttackAgent:
         logger.info(f"Deploying campaign: {campaign_id}")
         
         campaign = self.campaigns.get(campaign_id)
+        db_campaign = None
+        
+        if not campaign and self.db_session:
+            from app.models import Campaign as DbCampaign
+            db_campaign = self.db_session.query(DbCampaign).filter(DbCampaign.id == campaign_id).first()
+            if db_campaign:
+                plan = db_campaign.deployment_plan or {}
+                channels = [ChannelType(c) for c in plan.get("channels", [ChannelType.SOCIAL_MEDIA.value])]
+                targets = [
+                    CampaignTarget(
+                        id=t.get("id", "t-default"),
+                        name=t.get("name", "Target"),
+                        description=t.get("description", ""),
+                        size=t.get("size", 1000)
+                    )
+                    for t in plan.get("targets", [{"id": "t-default", "name": "Default Target", "description": "", "size": 1000}])
+                ]
+                campaign = Campaign(
+                    id=db_campaign.id,
+                    name=db_campaign.name,
+                    description=db_campaign.description or "",
+                    assets=plan.get("assets", []),
+                    targets=targets,
+                    channels=channels,
+                    budget=plan.get("budget", 0.0),
+                    status=CampaignStatus.DRAFT
+                )
+                self.campaigns[campaign_id] = campaign
         
         if not campaign:
             logger.error(f"Campaign not found: {campaign_id}")
             return {"status": "failed", "error": "Campaign not found"}
         
         campaign.status = CampaignStatus.RUNNING
+        if db_campaign:
+            db_campaign.status = "executing"
+            self.db_session.flush()
         
         # Deploy to each channel
         deployment_results = []
         
-        for channel in campaign.channels:
-            for target in campaign.targets:
+        channels = campaign.channels or [ChannelType.SOCIAL_MEDIA]
+        targets = campaign.targets or [CampaignTarget("t-default", "Default Target", "All customers", 1000)]
+        
+        for channel in channels:
+            for target in targets:
                 execution = await self._deploy_to_channel(
                     campaign=campaign,
                     channel=channel,
@@ -234,6 +268,28 @@ class AttackAgent:
                 deployment_results.append(execution)
                 campaign.executions.append(execution)
         
+        campaign.status = CampaignStatus.COMPLETED
+        
+        total_impressions = sum(e.impressions for e in campaign.executions)
+        total_clicks = sum(e.clicks for e in campaign.executions)
+        total_conversions = sum(e.conversions for e in campaign.executions)
+        total_cost = sum(e.cost for e in campaign.executions)
+        
+        if db_campaign:
+            db_campaign.status = "completed"
+            db_campaign.deployed_at = datetime.utcnow()
+            db_campaign.completed_at = datetime.utcnow()
+            db_campaign.metrics = {
+                "total_impressions": total_impressions,
+                "total_clicks": total_clicks,
+                "total_conversions": total_conversions,
+                "total_cost": total_cost,
+                "ctr": total_clicks / total_impressions if total_impressions > 0 else 0,
+                "conversion_rate": total_conversions / total_clicks if total_clicks > 0 else 0,
+                "roi": (total_conversions * 100 - total_cost) / total_cost if total_cost > 0 else 0
+            }
+            self.db_session.commit()
+            
         logger.info(f"Campaign deployed: {len(deployment_results)} executions")
         
         return {
@@ -257,7 +313,7 @@ class AttackAgent:
             campaign_id=campaign.id,
             channel=channel,
             target=target,
-            scheduled_at=campaign.start_date,
+            scheduled_at=campaign.start_date or datetime.utcnow(),
             status=CampaignStatus.RUNNING
         )
         
@@ -293,6 +349,27 @@ class AttackAgent:
         logger.info(f"Monitoring campaign: {campaign_id}")
         
         campaign = self.campaigns.get(campaign_id)
+        db_campaign = None
+        
+        if not campaign and self.db_session:
+            from app.models import Campaign as DbCampaign
+            db_campaign = self.db_session.query(DbCampaign).filter(DbCampaign.id == campaign_id).first()
+            if db_campaign:
+                metrics = db_campaign.metrics or {}
+                return {
+                    "campaign_id": campaign_id,
+                    "campaign_name": db_campaign.name,
+                    "status": db_campaign.status,
+                    "total_impressions": metrics.get("total_impressions", 0),
+                    "total_clicks": metrics.get("total_clicks", 0),
+                    "total_conversions": metrics.get("total_conversions", 0),
+                    "total_cost": metrics.get("total_cost", 0),
+                    "ctr": metrics.get("ctr", 0.0),
+                    "conversion_rate": metrics.get("conversion_rate", 0.0),
+                    "roi": metrics.get("roi", 0.0),
+                    "executions": metrics.get("executions", 0),
+                    "channels": plan.get("channels", []) if (plan := db_campaign.deployment_plan) else []
+                }
         
         if not campaign:
             logger.error(f"Campaign not found: {campaign_id}")

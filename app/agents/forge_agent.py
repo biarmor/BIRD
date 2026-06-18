@@ -66,14 +66,17 @@ class ForgeAgent:
     - Version management
     """
     
-    def __init__(self, db_session=None):
+    def __init__(self, db_session=None, llm_client=None):
         """
         Initialize Forge Agent.
         
         Args:
             db_session: SQLAlchemy database session
+            llm_client: Ollama client
         """
         self.db_session = db_session
+        from app.services.llm_service import get_llm_client
+        self.llm_client = llm_client or get_llm_client()
         self.generated_assets = []
         self.asset_templates = self._load_templates()
     
@@ -142,20 +145,35 @@ class ForgeAgent:
         
         return asset
     
+    async def _generate_llm_content(self, prompt: str, system_prompt: str, fallback_content: str) -> str:
+        """Helper to call Ollama with a fallback template if it fails or is offline."""
+        try:
+            if await self.llm_client.is_healthy():
+                response = await self.llm_client.generate(
+                    prompt=prompt,
+                    system=system_prompt
+                )
+                if "response" in response:
+                    return response["response"].strip()
+        except Exception as e:
+            logger.warning(f"Ollama generation failed, falling back to template: {e}")
+        return fallback_content
+
     async def _generate_social_post(
         self,
         context: Dict[str, Any],
         tone: ContentTone
     ) -> str:
         """Generate social media post."""
-        # Placeholder: In production, use LLM
         topic = context.get("topic", "General update")
         hashtags = context.get("hashtags", ["#update"])
         
-        post = f"Check out this: {topic}\n\n"
-        post += " ".join(hashtags)
+        fallback = f"Check out this: {topic}\n\n" + " ".join(hashtags)
         
-        return post
+        prompt = f"Write a social media post about: '{topic}'. The post should have a {tone.value} tone. Include appropriate hashtags like {', '.join(hashtags)}."
+        system_prompt = "You are a social media copywriter. Write a concise and engaging social media post."
+        
+        return await self._generate_llm_content(prompt, system_prompt, fallback)
     
     async def _generate_email_campaign(
         self,
@@ -163,13 +181,15 @@ class ForgeAgent:
         tone: ContentTone
     ) -> str:
         """Generate email campaign."""
-        # Placeholder: In production, use LLM
         subject = context.get("subject", "Important Update")
         body = context.get("body", "We have exciting news to share with you.")
         
-        email = f"Subject: {subject}\n\n{body}"
+        fallback = f"Subject: {subject}\n\n{body}"
         
-        return email
+        prompt = f"Write an email campaign. Subject line: '{subject}'. Body content outline: '{body}'. The tone should be {tone.value}."
+        system_prompt = "You are an email marketing expert. Write a compelling email with a clear subject line and engaging body copy."
+        
+        return await self._generate_llm_content(prompt, system_prompt, fallback)
     
     async def _generate_blog_post(
         self,
@@ -177,16 +197,15 @@ class ForgeAgent:
         tone: ContentTone
     ) -> str:
         """Generate blog post."""
-        # Placeholder: In production, use LLM
         title = context.get("title", "Untitled")
         topic = context.get("topic", "General topic")
         
-        post = f"# {title}\n\n"
-        post += f"## Introduction\n{topic}\n\n"
-        post += f"## Main Content\nDetailed content about {topic}\n\n"
-        post += "## Conclusion\nSummary and call to action"
+        fallback = f"# {title}\n\n## Introduction\n{topic}\n\n## Main Content\nDetailed content about {topic}\n\n## Conclusion\nSummary and call to action"
         
-        return post
+        prompt = f"Write a blog post titled '{title}' about the topic: '{topic}'. The tone should be {tone.value}."
+        system_prompt = "You are a professional blogger. Write a structured blog post with an introduction, main body, and conclusion."
+        
+        return await self._generate_llm_content(prompt, system_prompt, fallback)
     
     async def _generate_ad_copy(
         self,
@@ -194,14 +213,16 @@ class ForgeAgent:
         tone: ContentTone
     ) -> str:
         """Generate advertising copy."""
-        # Placeholder: In production, use LLM
         headline = context.get("headline", "Amazing Offer")
         body = context.get("body", "Limited time offer")
         cta = context.get("cta", "Learn More")
         
-        copy = f"Headline: {headline}\n\nBody: {body}\n\nCTA: {cta}"
+        fallback = f"Headline: {headline}\n\nBody: {body}\n\nCTA: {cta}"
         
-        return copy
+        prompt = f"Create advertisement copy. Headline: '{headline}'. Body description: '{body}'. Call to action (CTA): '{cta}'. Tone: {tone.value}."
+        system_prompt = "You are an advertising copywriter. Write a high-converting ad copy with a clear headline, body, and call to action."
+        
+        return await self._generate_llm_content(prompt, system_prompt, fallback)
     
     async def _generate_video_script(
         self,
@@ -209,13 +230,15 @@ class ForgeAgent:
         tone: ContentTone
     ) -> str:
         """Generate video script."""
-        # Placeholder: In production, use LLM
         scene = context.get("scene", "Office setting")
         voiceover = context.get("voiceover", "Welcome to our video")
         
-        script = f"[SCENE] {scene}\n[VOICEOVER] {voiceover}"
+        fallback = f"[SCENE] {scene}\n[VOICEOVER] {voiceover}"
         
-        return script
+        prompt = f"Write a short video script. Visual Scene setting: '{scene}'. Voiceover text: '{voiceover}'. Tone: {tone.value}."
+        system_prompt = "You are a video producer and scriptwriter. Format the script with clear [SCENE] and [VOICEOVER] parts."
+        
+        return await self._generate_llm_content(prompt, system_prompt, fallback)
     
     async def _generate_generic_content(
         self,
@@ -224,7 +247,12 @@ class ForgeAgent:
     ) -> str:
         """Generate generic content."""
         topic = context.get("topic", "General content")
-        return f"Content about {topic} in {tone.value} tone"
+        fallback = f"Content about {topic} in {tone.value} tone"
+        
+        prompt = f"Write content about '{topic}' using a {tone.value} tone."
+        system_prompt = "You are a general content creator. Write short, high-quality copy about the provided topic."
+        
+        return await self._generate_llm_content(prompt, system_prompt, fallback)
     
     async def _calculate_quality_score(
         self,

@@ -78,6 +78,68 @@ async def analyze_intelligence(
         )
         
         db.add(intelligence_query)
+        
+        # Save reasoning steps to database for explainability
+        findings = result.get("findings", [])
+        step_number = 1
+        
+        # If findings is a single dict or not a list, wrap it in a list
+        if isinstance(findings, dict):
+            findings = [findings]
+            
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            
+            agent_type = finding.get("agent", "orchestrator")
+            
+            # If the agent has specific reasoning steps inside its result dict
+            if "reasoning_steps" in finding and isinstance(finding["reasoning_steps"], list):
+                for step in finding["reasoning_steps"]:
+                    if not isinstance(step, dict):
+                        continue
+                    
+                    premise = step.get("premise", "")
+                    conclusion = step.get("conclusion", "")
+                    text = f"{premise} -> {conclusion}" if premise else conclusion
+                    
+                    chain_step = ReasoningChain(
+                        id=str(uuid.uuid4()),
+                        query_id=query_id,
+                        step_number=step_number,
+                        agent_type=agent_type,
+                        reasoning_text=text,
+                        confidence=step.get("confidence", 0.8)
+                    )
+                    db.add(chain_step)
+                    step_number += 1
+            # If the agent has a reasoning_chain list of strings
+            elif "reasoning_chain" in finding and isinstance(finding["reasoning_chain"], list):
+                for chain_str in finding["reasoning_chain"]:
+                    chain_step = ReasoningChain(
+                        id=str(uuid.uuid4()),
+                        query_id=query_id,
+                        step_number=step_number,
+                        agent_type=agent_type,
+                        reasoning_text=chain_str,
+                        confidence=finding.get("confidence", 0.9)
+                    )
+                    db.add(chain_step)
+                    step_number += 1
+            # Otherwise construct a summary step for this agent
+            else:
+                text = finding.get("findings") or finding.get("conclusion") or f"Executed analysis via {agent_type} agent."
+                chain_step = ReasoningChain(
+                    id=str(uuid.uuid4()),
+                    query_id=query_id,
+                    step_number=step_number,
+                    agent_type=agent_type,
+                    reasoning_text=str(text),
+                    confidence=finding.get("confidence", 0.8)
+                )
+                db.add(chain_step)
+                step_number += 1
+        
         db.commit()
         db.refresh(intelligence_query)
         
@@ -93,6 +155,19 @@ async def analyze_intelligence(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+from typing import List
+
+@router.get("/", response_model=List[IntelligenceQueryResponse])
+async def list_queries(workspace_id: str, db: Session = Depends(get_db)):
+    """
+    List all intelligence queries for a workspace.
+    """
+    queries = db.query(IntelligenceQuery).filter(
+        IntelligenceQuery.workspace_id == workspace_id
+    ).order_by(IntelligenceQuery.created_at.desc()).all()
+    return queries
 
 
 @router.get("/{query_id}", response_model=IntelligenceQueryResponse)

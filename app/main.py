@@ -6,7 +6,8 @@ FastAPI application setup with middleware, routes, and error handling.
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 import logging
@@ -115,7 +116,11 @@ async def health_check():
 
 @app.get("/", tags=["Root"])
 async def root():
-    """Root endpoint."""
+    """Root endpoint returning dashboard UI."""
+    import os
+    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
     return {
         "message": f"Welcome to {settings.app_name}",
         "version": settings.app_version,
@@ -165,6 +170,13 @@ app.include_router(
     prefix=f"{settings.api_v2_str}/campaigns",
     tags=["Campaigns"]
 )
+
+# Mount static files
+import os
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 # ============================================================================

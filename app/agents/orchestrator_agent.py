@@ -125,10 +125,10 @@ class OrchestratorAgent:
         query_lower = query.lower()
         
         # Determine agents
-        if any(word in query_lower for word in ["web", "search", "news", "competitor", "market"]):
+        if any(word in query_lower for word in ["web", "news", "competitor", "market"]) or ("search" in query_lower and "vault" not in query_lower):
             agents_needed.append(AgentType.RADAR)
         
-        if any(word in query_lower for word in ["memory", "history", "fact", "knowledge", "vault"]):
+        if any(word in query_lower for word in ["memory", "history", "fact", "knowledge", "vault", "competitor", "news"]):
             agents_needed.append(AgentType.VAULT)
         
         if any(word in query_lower for word in ["why", "reason", "cause", "analysis", "explain"]):
@@ -243,8 +243,20 @@ class OrchestratorAgent:
         # Execute all tasks concurrently
         results = await asyncio.gather(*coroutines, return_exceptions=True)
         
-        # Filter out exceptions
-        valid_results = [r for r in results if isinstance(r, AgentExecutionResult)]
+        # Filter out exceptions and construct failed results for exceptions
+        valid_results = []
+        for idx, res in enumerate(results):
+            if isinstance(res, AgentExecutionResult):
+                valid_results.append(res)
+            elif isinstance(res, Exception):
+                task = tasks[idx]
+                valid_results.append(AgentExecutionResult(
+                    task_id=task.id,
+                    agent_type=task.agent_type,
+                    status="failed",
+                    error_message=str(res),
+                    execution_time_ms=0
+                ))
         
         # Store in history
         for result in valid_results:
@@ -264,13 +276,32 @@ class OrchestratorAgent:
             Execution result
         """
         start_time = datetime.utcnow()
+        workspace_id = task.parameters.get("workspace_id", "default")
         
         try:
-            # Placeholder: In production, this would invoke the actual agent
             logger.info(f"Executing {task.agent_type} agent for query: {task.query}")
             
-            # Simulate execution delay
-            await asyncio.sleep(0.1)
+            # If the agent is RadarAgent, execute it
+            if task.agent_type == AgentType.RADAR:
+                from app.agents.radar_agent import RadarAgent
+                radar = RadarAgent(db_session=self.db_session)
+                intel = await radar.fetch_intel(task.query, workspace_id)
+                ingested = await radar.ingest_intel(intel, workspace_id)
+                agent_result = {
+                    "agent": "radar",
+                    "query": task.query,
+                    "intel": intel,
+                    "ingested_facts": ingested,
+                    "findings": f"Gathered {len(intel)} competitor intelligence items."
+                }
+            else:
+                # Simulate execution delay for other agents
+                await asyncio.sleep(0.1)
+                agent_result = {
+                    "agent": task.agent_type.value,
+                    "query": task.query,
+                    "findings": f"Findings from {task.agent_type.value} agent"
+                }
             
             # Create result
             execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -279,11 +310,7 @@ class OrchestratorAgent:
                 task_id=task.id,
                 agent_type=task.agent_type,
                 status="success",
-                result={
-                    "agent": task.agent_type.value,
-                    "query": task.query,
-                    "findings": f"Findings from {task.agent_type.value} agent"
-                },
+                result=agent_result,
                 execution_time_ms=execution_time_ms,
                 tokens_used=100,
                 cost_estimate=0.01
@@ -389,6 +416,29 @@ class OrchestratorAgent:
         # Execute tasks
         if execution_mode == ExecutionMode.PARALLEL:
             results = await self.execute_parallel(tasks)
+        elif execution_mode == ExecutionMode.ADAPTIVE:
+            from app.agents.adaptive_planning_agent import AdaptivePlanningAgent
+            planner = AdaptivePlanningAgent(db_session=self.db_session)
+            agents_str = [a.value for a in agents_needed]
+            plan = await planner.create_plan(
+                query=query,
+                workspace_id=workspace_id,
+                agents_needed=agents_str,
+                context={"query": query, "workspace_id": workspace_id}
+            )
+            plan_res = await planner.execute_plan(plan)
+            results = []
+            for r in plan_res.get("results", []):
+                agent_type_val = r.get("agent_type")
+                agent_type_enum = next((a for a in AgentType if a.value == agent_type_val), AgentType.VAULT)
+                results.append(AgentExecutionResult(
+                    task_id=r.get("task_id", "default"),
+                    agent_type=agent_type_enum,
+                    status="success" if r.get("status") == "completed" else "failed",
+                    result={"findings": r.get("result")},
+                    execution_time_ms=r.get("actual_time_ms", 100),
+                    error_message=None
+                ))
         else:
             results = await self.execute_sequential(tasks)
         
@@ -436,6 +486,7 @@ class OrchestratorAgent:
                 "total_executions": 0,
                 "successful_executions": 0,
                 "failed_executions": 0,
+                "success_rate": 0.0,
                 "average_execution_time_ms": 0,
                 "total_tokens_used": 0,
                 "total_cost": 0.0

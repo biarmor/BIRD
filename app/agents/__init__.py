@@ -20,6 +20,7 @@ from app.agents.adaptive_planning_agent import AdaptivePlanningAgent, create_and
 from app.agents.rar_agent import RARAgent, reason_with_retrieval
 from app.agents.forge_agent import ForgeAgent, generate_marketing_asset
 from app.agents.attack_agent import AttackAgent, deploy_marketing_campaign
+from app.agents.radar_agent import RadarAgent, fetch_and_ingest_intel
 
 __all__ = [
     "VaultAgent", "query_vault_facts",
@@ -29,5 +30,6 @@ __all__ = [
     "AdaptivePlanningAgent", "create_and_execute_plan",
     "RARAgent", "reason_with_retrieval",
     "ForgeAgent", "generate_marketing_asset",
-    "AttackAgent", "deploy_marketing_campaign"
+    "AttackAgent", "deploy_marketing_campaign",
+    "RadarAgent", "fetch_and_ingest_intel"
 ]

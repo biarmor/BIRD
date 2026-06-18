@@ -263,8 +263,9 @@ async def get_vault_stats(workspace_id: str, db: Session = Depends(get_db)):
         ).count()
         
         # Calculate average quality
+        from sqlalchemy import func
         avg_quality = db.query(
-            db.func.avg(MemoryQualityScore.overall_score)
+            func.avg(MemoryQualityScore.overall_score)
         ).join(
             VaultFact, MemoryQualityScore.fact_id == VaultFact.id
         ).filter(

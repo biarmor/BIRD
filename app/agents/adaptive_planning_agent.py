@@ -215,7 +215,6 @@ class AdaptivePlanningAgent:
             if evaluation["needs_adjustment"]:
                 logger.info(f"Plan adjustment needed: {evaluation['reason']}")
                 await self._adjust_plan(plan, evaluation)
-                plan.adjustments_made += 1
                 plan.status = PlanStatus.ADJUSTED
             
             # Calculate metrics
@@ -358,6 +357,7 @@ class AdaptivePlanningAgent:
             for task in plan.tasks:
                 task.estimated_time_ms = int(task.estimated_time_ms * 0.9)
         
+        plan.adjustments_made += 1
         logger.info(f"Plan adjusted: {plan.adjustments_made} adjustments made")
     
     async def replan_on_failure(

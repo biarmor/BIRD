@@ -51,14 +51,17 @@ class ReasoningAgent:
     - Reasoning chain visualization
     """
     
-    def __init__(self, db_session=None):
+    def __init__(self, db_session=None, llm_client=None):
         """
         Initialize Reasoning Agent.
         
         Args:
             db_session: SQLAlchemy database session
+            llm_client: Ollama client
         """
         self.db_session = db_session
+        from app.services.llm_service import get_llm_client
+        self.llm_client = llm_client or get_llm_client()
         self.reasoning_chain = []
         self.hypotheses = []
     
@@ -133,8 +136,7 @@ class ReasoningAgent:
         """
         logger.info(f"Identifying potential causes for: {effect}")
         
-        # Placeholder: In production, this would use LLM or knowledge graph
-        potential_causes = [
+        fallback_causes = [
             "Market competition",
             "Technology disruption",
             "Regulatory changes",
@@ -144,14 +146,39 @@ class ReasoningAgent:
         
         # Add context-specific causes
         if "market" in effect.lower():
-            potential_causes.append("Market saturation")
+            fallback_causes.append("Market saturation")
         
         if "revenue" in effect.lower():
-            potential_causes.extend(["Pricing pressure", "Customer churn"])
+            fallback_causes.extend(["Pricing pressure", "Customer churn"])
+            
+        try:
+            if await self.llm_client.is_healthy():
+                prompt = (
+                    f"Identify potential causes for the following business effect: '{effect}'. "
+                    f"Industry context: '{context.get('industry', 'unknown')}'. "
+                    f"Recent events: {context.get('recent_events', [])}. "
+                    f"Return a list of causes separated by newlines."
+                )
+                response = await self.llm_client.generate(
+                    prompt=prompt,
+                    system="You are a business intelligence analyst. Identify logical potential causes for the given business effect. Return only a list of causes, one per line."
+                )
+                if "response" in response:
+                    lines = [line.strip() for line in response["response"].split("\n") if line.strip()]
+                    cleaned_lines = []
+                    for line in lines:
+                        cleaned = line.lstrip("0123456789.-*• ").strip()
+                        if cleaned:
+                            cleaned_lines.append(cleaned)
+                    if cleaned_lines:
+                        logger.info(f"Identified {len(cleaned_lines)} causes via LLM")
+                        return cleaned_lines
+        except Exception as e:
+            logger.warning(f"Ollama causality analysis failed, falling back to static causes: {e}")
         
-        logger.info(f"Identified {len(potential_causes)} potential causes")
+        logger.info(f"Identified {len(fallback_causes)} potential causes (fallback)")
         
-        return potential_causes
+        return fallback_causes
     
     async def _evaluate_causes(
         self,

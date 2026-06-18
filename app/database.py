@@ -12,9 +12,11 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bird.db")
-DATABASE_ECHO = os.getenv("DATABASE_ECHO", "False").lower() == "true"
+from config.settings import get_settings
+
+settings = get_settings()
+DATABASE_URL = settings.database_url
+DATABASE_ECHO = settings.database_echo
 
 
 class DatabaseManager:

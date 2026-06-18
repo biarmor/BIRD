@@ -5,8 +5,8 @@ Handles text embeddings using sentence-transformers for semantic search.
 """
 
 import logging
+import math
 from typing import List, Dict, Any
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,13 @@ class EmbeddingManager:
             Embedding vector
         """
         if self.model is None:
-            # Mock embedding for testing
-            return [0.0] * 384
+            # Generate a deterministic mock embedding based on the text hash
+            import hashlib
+            import random
+            h = hashlib.md5(text.encode('utf-8')).hexdigest()
+            seed = int(h, 16) % (2**32)
+            rng = random.Random(seed)
+            return [rng.uniform(-1.0, 1.0) for _ in range(384)]
         
         embedding = self.model.encode(text, convert_to_tensor=False)
         return embedding.tolist()
@@ -63,8 +68,7 @@ class EmbeddingManager:
             List of embedding vectors
         """
         if self.model is None:
-            # Mock embeddings for testing
-            return [[0.0] * 384 for _ in texts]
+            return [self.embed_text(text) for text in texts]
         
         embeddings = self.model.encode(texts, convert_to_tensor=False)
         return embeddings.tolist()
@@ -84,14 +88,12 @@ class EmbeddingManager:
         Returns:
             Cosine similarity score (0-1)
         """
-        # Convert to numpy arrays
-        v1 = np.array(embedding1)
-        v2 = np.array(embedding2)
-        
-        # Calculate cosine similarity
-        dot_product = np.dot(v1, v2)
-        norm1 = np.linalg.norm(v1)
-        norm2 = np.linalg.norm(v2)
+        if not embedding1 or not embedding2 or len(embedding1) != len(embedding2):
+            return 0.0
+            
+        dot_product = sum(a * b for a, b in zip(embedding1, embedding2))
+        norm1 = math.sqrt(sum(a * a for a in embedding1))
+        norm2 = math.sqrt(sum(b * b for b in embedding2))
         
         if norm1 == 0 or norm2 == 0:
             return 0.0
