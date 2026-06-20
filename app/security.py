@@ -4,6 +4,13 @@ BIRD Backend Security Module
 Handles password hashing, JWT token generation, and authentication.
 """
 
+# Monkeypatch passlib bcrypt compatibility issue with modern bcrypt versions in Python 3.12
+import bcrypt
+if not hasattr(bcrypt, "__about__"):
+    class BcryptAbout:
+        __version__ = getattr(bcrypt, "__version__", "4.0.0")
+    bcrypt.__about__ = BcryptAbout()
+
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt

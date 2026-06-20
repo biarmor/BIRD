@@ -415,38 +415,69 @@ orchestratorForm.addEventListener("submit", async (e) => {
     `;
 
     try {
-        let apiQueryMode = "orchestrator-worker";
-        if (modeVal === "ADAPTIVE") apiQueryMode = "adaptive-planning";
-        else if (modeVal === "SEQUENTIAL") apiQueryMode = "debate";
+        if (modeVal === "V1_CYCLE") {
+            const workspaceIdInt = parseInt(currentWorkspaceId) || 1;
+            const res = await fetch(`${API_BASE}/api/v1/intelligence/analyze`, {
+                method: "POST",
+                headers: getHeaders(),
+                body: JSON.stringify({
+                    query: queryText,
+                    workspace_id: workspaceIdInt
+                })
+            });
 
-        const res = await fetch(`${API_BASE}/api/v2/intelligence/analyze`, {
-            method: "POST",
-            headers: getHeaders(),
-            body: JSON.stringify({
-                query: queryText,
-                workspace_id: currentWorkspaceId,
-                mode: apiQueryMode
-            })
-        });
+            const data = await res.json();
 
-        const data = await res.json();
-
-        if (res.ok) {
-            executionStatusBadge.textContent = "completed";
-            executionStatusBadge.className = "badge badge-green";
-            renderExecutionResult(data);
-            loadReasoningHistory();
-            orchestratorForm.reset();
+            if (res.ok) {
+                executionStatusBadge.textContent = "completed";
+                executionStatusBadge.className = "badge badge-green";
+                renderV1ExecutionResult(data);
+                orchestratorForm.reset();
+            } else {
+                executionStatusBadge.textContent = "failed";
+                executionStatusBadge.className = "badge badge-red";
+                executionMonitorBody.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-triangle-exclamation empty-icon" style="color:var(--accent-red)"></i>
+                        <h4>Execution Mismatch</h4>
+                        <p class="text-muted">${data.detail || data.error || "An error occurred during analysis."}</p>
+                    </div>
+                `;
+            }
         } else {
-            executionStatusBadge.textContent = "failed";
-            executionStatusBadge.className = "badge badge-red";
-            executionMonitorBody.innerHTML = `
-                <div class="empty-state">
-                    <i class="fa-solid fa-triangle-exclamation empty-icon" style="color:var(--accent-red)"></i>
-                    <h4>Execution Mismatch</h4>
-                    <p class="text-muted">${data.detail || data.error || "An error occurred during analysis."}</p>
-                </div>
-            `;
+            let apiQueryMode = "orchestrator-worker";
+            if (modeVal === "ADAPTIVE") apiQueryMode = "adaptive-planning";
+            else if (modeVal === "SEQUENTIAL") apiQueryMode = "debate";
+
+            const res = await fetch(`${API_BASE}/api/v2/intelligence/analyze`, {
+                method: "POST",
+                headers: getHeaders(),
+                body: JSON.stringify({
+                    query: queryText,
+                    workspace_id: currentWorkspaceId,
+                    mode: apiQueryMode
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                executionStatusBadge.textContent = "completed";
+                executionStatusBadge.className = "badge badge-green";
+                renderExecutionResult(data);
+                loadReasoningHistory();
+                orchestratorForm.reset();
+            } else {
+                executionStatusBadge.textContent = "failed";
+                executionStatusBadge.className = "badge badge-red";
+                executionMonitorBody.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-triangle-exclamation empty-icon" style="color:var(--accent-red)"></i>
+                        <h4>Execution Mismatch</h4>
+                        <p class="text-muted">${data.detail || data.error || "An error occurred during analysis."}</p>
+                    </div>
+                `;
+            }
         }
     } catch (err) {
         executionStatusBadge.textContent = "failed";
@@ -536,6 +567,117 @@ async function renderExecutionResult(queryResponse) {
     `;
     executionMonitorBody.appendChild(conclusionCard);
 }
+
+
+function renderV1ExecutionResult(response) {
+    executionMonitorBody.innerHTML = "";
+
+    // 1. Header Information
+    const header = document.createElement("div");
+    header.className = "margin-bottom-sm";
+    header.innerHTML = `
+        <h4 style="font-size:14px;color:var(--text-secondary);">Query: <span class="text-muted">${response.query}</span></h4>
+        <p style="font-size:12px;color:var(--text-muted);">Timestamp: ${new Date(response.timestamp).toLocaleString()}</p>
+    `;
+    executionMonitorBody.appendChild(header);
+
+    // 2. Thoughts Traces Card
+    if (response.thoughts && response.thoughts.length > 0) {
+        const thoughtsHeader = document.createElement("h4");
+        thoughtsHeader.textContent = "Agent Thought Traces";
+        thoughtsHeader.className = "margin-top-sm";
+        executionMonitorBody.appendChild(thoughtsHeader);
+
+        const thoughtsCard = document.createElement("div");
+        thoughtsCard.className = "monitor-card";
+        let thoughtsListHtml = response.thoughts.map(thought => `<li>${thought}</li>`).join("");
+        thoughtsCard.innerHTML = `
+            <div class="monitor-header">
+                <span class="monitor-agent-name"><i class="fa-solid fa-brain"></i> Cognitive Steps</span>
+                <span class="badge badge-indigo">Thoughts</span>
+            </div>
+            <div class="monitor-conclusion">
+                <ul style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--text-secondary);">
+                    ${thoughtsListHtml}
+                </ul>
+            </div>
+        `;
+        executionMonitorBody.appendChild(thoughtsCard);
+    }
+
+    // 3. Radar Summary Card
+    if (response.radar_summary && response.radar_summary.top_results && response.radar_summary.top_results.length > 0) {
+        const radarHeader = document.createElement("h4");
+        radarHeader.textContent = "Radar Intelligence Gathering (Web Search)";
+        radarHeader.className = "margin-top-sm";
+        executionMonitorBody.appendChild(radarHeader);
+
+        const radarCard = document.createElement("div");
+        radarCard.className = "monitor-card";
+        let resultsListHtml = response.radar_summary.top_results.map(r => `
+            <div style="margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                <a href="${r.url}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: none; font-size: 13px;">${r.title}</a>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">${r.description}</p>
+                <div style="margin-top: 4px; font-size: 10px; color: var(--text-secondary);">
+                    <span class="badge badge-green" style="font-size: 9px; padding: 2px 4px;">Relevance: ${Math.round(r.relevance_score * 100)}%</span>
+                    <span style="margin-left: 8px;"><i class="fa-solid fa-earth-americas"></i> ${r.source}</span>
+                </div>
+            </div>
+        `).join("");
+        radarCard.innerHTML = `
+            <div class="monitor-header">
+                <span class="monitor-agent-name"><i class="fa-solid fa-magnifying-glass"></i> RadarAgent</span>
+                <span class="badge badge-green">${response.radar_summary.total_results} Results Found</span>
+            </div>
+            <div class="monitor-conclusion" style="max-height: 250px; overflow-y: auto;">
+                ${resultsListHtml}
+            </div>
+        `;
+        executionMonitorBody.appendChild(radarCard);
+    }
+
+    // 4. Final Reasoning Analysis Report Card
+    if (response.analysis) {
+        const reportHeader = document.createElement("h4");
+        reportHeader.textContent = "Reasoning Analysis & Strategy";
+        reportHeader.className = "margin-top-sm";
+        executionMonitorBody.appendChild(reportHeader);
+
+        const reportCard = document.createElement("div");
+        reportCard.className = "monitor-card";
+        
+        let findingsHtml = (response.analysis.key_findings || []).map(f => `<li>${f}</li>`).join("");
+        let nextStepsHtml = (response.analysis.next_steps || []).map(ns => `<li>${ns}</li>`).join("");
+
+        reportCard.innerHTML = `
+            <div class="monitor-header">
+                <span class="monitor-agent-name"><i class="fa-solid fa-robot"></i> ReasoningAgent</span>
+                <span class="badge badge-amber">Completed Report</span>
+            </div>
+            <div class="monitor-conclusion">
+                <h5 style="color: var(--secondary); margin: 0 0 8px 0; font-size: 14px;">Summary</h5>
+                <p style="margin: 0 0 16px 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">${response.analysis.summary}</p>
+                
+                <h5 style="color: var(--secondary); margin: 0 0 8px 0; font-size: 14px;">Key Findings</h5>
+                <ul style="margin: 0 0 16px 0; padding-left: 20px; font-size: 13px; line-height: 1.6;">
+                    ${findingsHtml}
+                </ul>
+
+                <h5 style="color: var(--secondary); margin: 0 0 8px 0; font-size: 14px;">Full Intelligence Report</h5>
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-size: 12.5px; line-height: 1.6; font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto; color: var(--text-secondary);">
+                    ${response.analysis.full_analysis}
+                </div>
+
+                <h5 style="color: var(--secondary); margin: 16px 0 8px 0; font-size: 14px;">Next Strategic Steps</h5>
+                <ul style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.6;">
+                    ${nextStepsHtml}
+                </ul>
+            </div>
+        `;
+        executionMonitorBody.appendChild(reportCard);
+    }
+}
+
 
 async function loadReasoningHistory() {
     if (!currentWorkspaceId) return;

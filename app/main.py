@@ -134,6 +134,8 @@ async def root():
 # ============================================================================
 
 # API v1 routes
+from app.api.v1.intelligence import router as api_v1_intelligence_router
+
 app.include_router(
     auth.router,
     prefix=f"{settings.api_v1_str}/auth",
@@ -144,6 +146,12 @@ app.include_router(
     workspaces.router,
     prefix=f"{settings.api_v1_str}/workspaces",
     tags=["Workspaces"]
+)
+
+app.include_router(
+    api_v1_intelligence_router,
+    prefix=f"{settings.api_v1_str}",
+    tags=["Intelligence v1"]
 )
 
 # API v2 routes (Multi-Agent System)

@@ -298,3 +298,13 @@ def get_chromadb_manager(db_path: str = "./data/chromadb") -> ChromaDBManager:
     if _chromadb_manager is None:
         _chromadb_manager = ChromaDBManager(db_path)
     return _chromadb_manager
+
+
+class EmbeddingService:
+    """Service wrapper that matches the Vault and Reasoning agents' interface."""
+    def __init__(self):
+        self.manager = get_embedding_manager()
+
+    def get_embedding(self, text: str) -> list[float]:
+        return self.manager.embed_text(text)
+
